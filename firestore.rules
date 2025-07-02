@@ -1,0 +1,16 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow users to read/write their own job submissions
+    match /users/{userId}/submissions/{submissionId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to read/write their own jobs (custom jobs collection)
+    match /users/{userId}/jobs/{jobId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // You can add other rules here as needed
+  }
+}
