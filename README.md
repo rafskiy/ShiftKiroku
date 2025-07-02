@@ -24,7 +24,7 @@ Password and privacy are **highly valued**. All data is stored securely on Googl
 
 ## 🚀 Try It Out
 
-1. Visit the app at [YOUR_APP_URL_HERE]  
+1. Visit the app at https://shift-kiroku.web.app/ 
 2. Register a new account or log in with your email/password.  
 3. Start adding your jobs and logging your shifts!
 
@@ -33,7 +33,7 @@ It’s **free to use**, and I’d love your feedback!
 ## 📣 Feedback & Contact
 
 This project was made as my first full-stack app, and I’m sharing it with APU students for testing and suggestions.  
-Feel free to contact me directly via email: [YOUR_EMAIL_HERE].
+Feel free to contact me directly via discord : ffiizz
 
 ## 📄 License
 
