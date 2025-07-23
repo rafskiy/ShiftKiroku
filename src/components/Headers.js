@@ -1,9 +1,10 @@
 import React, { useState, useContext } from "react";
 import { ThemeContext } from "../ThemeContext";
-import { 
-  AppBar, Toolbar, Typography, IconButton, Drawer, List, ListItem, 
-  ListItemButton, ListItemText, Box, Button, useTheme, useMediaQuery 
+import {
+  AppBar, Toolbar, Typography, IconButton, Drawer, List, ListItem,
+  ListItemButton, ListItemText, Box, Button, useTheme, useMediaQuery
 } from "@mui/material";
+import { auth } from "../firebase";
 
 import MenuIcon from "@mui/icons-material/Menu";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
@@ -22,18 +23,23 @@ export default function Headers() {
     { label: "Dashboard", path: "/dashboard" },
     { label: "Manage Jobs", path: "/managejobs" },
     { label: "Form", path: "/form" },
-    { label: "Logout", path: "/" }, // Replace with real logout logic
+    { label: "Logout", path: "/" },
   ];
 
   const toggleDrawer = (open) => () => {
     setDrawerOpen(open);
   };
 
-  const handleNavClick = (path) => {
+  const handleNavClick = async (path) => {
     setDrawerOpen(false);
     if (path === "/") {
-      // TODO: add signOut logic here if needed
-      navigate(path);
+      try {
+        await auth.signOut();
+        navigate("/");  // Redirect after logout
+      } catch (error) {
+        console.error("Logout failed:", error);
+        alert("Failed to log out. Please try again.");
+      }
     } else {
       navigate(path);
     }
@@ -56,7 +62,6 @@ export default function Headers() {
         ))}
       </List>
 
-      {/* Dark mode toggle inside drawer */}
       <Box
         sx={{
           px: 2,
@@ -94,7 +99,7 @@ export default function Headers() {
             sx={{ cursor: "pointer" }}
             onClick={() => navigate("/dashboard")}
           >
-            ShiftKiroku 　シフト記録
+            ShiftKiroku シフト記録
           </Typography>
 
           {isMobile ? (

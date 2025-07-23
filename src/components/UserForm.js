@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../firebase'; // adjust the path if your firebase.js is elsewhere
+import { db } from '../firebase'; 
 
 function UserForm() {
   const [name, setName] = useState('');

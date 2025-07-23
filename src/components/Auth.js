@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import { auth } from "../firebase";
 import {
   createUserWithEmailAndPassword,
@@ -6,6 +6,7 @@ import {
   sendPasswordResetEmail,
 } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+import { ThemeContext } from "../ThemeContext";
 
 import {
   Box,
@@ -24,6 +25,8 @@ export default function Auth() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  const { darkMode } = useContext(ThemeContext);
 
   const clearMessages = () => {
     setError("");
@@ -84,14 +87,15 @@ export default function Auth() {
     >
       <Box display="flex" justifyContent="center" mb={1}>
         <img
-          src="/shiftkiroku-logo.png" // Make sure the image is in your public folder
+          src={darkMode ? "/shiftkiroku-logo-dark.png" : "/shiftkiroku-logo-light.png"}
           alt="ShiftKiroku Logo"
           style={{
-            height: 60, // adjust size if needed
+            height: 60,
             objectFit: "contain",
           }}
         />
       </Box>
+
       <Typography
         variant="subtitle1"
         textAlign="center"
