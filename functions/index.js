@@ -1,28 +1,53 @@
 const functions = require("firebase-functions");
-const nodemailer = require("nodemailer");
+const admin = require("firebase-admin");
+const {createEvents} = require("ics");
 
-// Configure nodemailer transporter
-const transporter = nodemailer.createTransport({
-  service: "Gmail",
-  auth: {
-    user: "your.email@gmail.com",
-    pass: "your-app-password",
-  },
-});
+admin.initializeApp();
 
-// Define the HTTPS function
-exports.sendFeedback = functions.https.onRequest(async (req, res) => {
-  const {email, message} = req.body;
+// Live ICS feed for a user's shifts
+// Example: /userCalendarICS?userId=USER_ID
+exports.userCalendarICS = functions.https.onRequest(async (req, res) => {
+  const userId = req.query.userId;
+  if (!userId) {
+    res.status(400).send("Missing userId");
+    return;
+  }
   try {
-    await transporter.sendMail({
-      from: email,
-      to: "your.email@gmail.com",
-      subject: "New Feedback Received",
-      text: `From: ${email}\n\n${message}`,
+    const shiftsSnap = await admin
+        .firestore()
+        .collection(`users/${userId}/submissions`)
+        .get();
+    const shifts = shiftsSnap.docs.map((doc) => doc.data());
+    const events = shifts.map((shift) => {
+      const [year, month, day] = shift.workDate.split("-").map(Number);
+      const [startHour, startMinute] = shift.startTime ?
+        shift.startTime.split(":").map(Number) : [0, 0];
+      const [endHour, endMinute] = shift.endTime ?
+        shift.endTime.split(":").map(Number) : [0, 0];
+      return {
+        start: [year, month, day, startHour, startMinute],
+        end: [year, month, day, endHour, endMinute],
+        title: shift.jobType,
+        description:
+          `Base Rate: ¥${shift.baseRate}\nNet Hours: ${shift.netHours}`,
+      };
     });
-    res.status(200).send({success: true});
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({success: false, error: error.message});
+    createEvents(
+        events,
+        (error, value) => {
+          if (error) {
+            res.status(500).send("Failed to generate calendar");
+            return;
+          }
+          res.setHeader("Content-Type", "text/calendar");
+          res.setHeader(
+              "Content-Disposition",
+              "attachment; filename=\"shifts.ics\"",
+          );
+          res.send(value);
+        },
+    );
+  } catch (err) {
+    res.status(500).send("Error fetching shifts: " + err.message);
   }
 });

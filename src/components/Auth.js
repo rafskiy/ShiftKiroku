@@ -169,6 +169,9 @@ export default function Auth() {
       >
         Forgot Password?
       </Button>
+
+      {/* App Info and Privacy Policy for OAuth Verification */}
+      {/* Removed privacy policy and Google Calendar access notice as requested */}
     </Box>
   );
 }

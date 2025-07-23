@@ -5,6 +5,7 @@ import {
   onSnapshot,
   doc,
   deleteDoc,
+  addDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../firebase";
@@ -16,7 +17,6 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
 } from "recharts";
 import {
   Box,
@@ -26,20 +26,78 @@ import {
   Select,
   Button,
   useTheme,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from "@mui/material";
 import { TabContext, TabList, TabPanel } from "@mui/lab";
 import dayjs from "dayjs";
+import { exportShiftsToICS } from '../utils';
+import { DateCalendar, PickersDay } from '@mui/x-date-pickers';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
+import format from 'date-fns/format';
+import parse from 'date-fns/parse';
+import startOfWeek from 'date-fns/startOfWeek';
+import getDay from 'date-fns/getDay';
+import enUS from 'date-fns/locale/en-US';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+import Tooltip from '@mui/material/Tooltip';
+import { convertTimeToDecimal, calculateRawDuration, calculateNetHours, getBreakMinutes, computeWeekNumber } from '../utils';
 
 function isBreakPeriod(dateStr) {
   const date = new Date(dateStr);
   const year = date.getFullYear();
+
+  // Winter break: Dec 20 (previous year) – Jan 10
   const winterStart = new Date(year - 1, 11, 20);
   const winterEnd = new Date(year, 0, 10);
+
+  // Spring break: Feb 1 – Mar 31
   const springStart = new Date(year, 1, 1);
   const springEnd = new Date(year, 2, 31);
+
+  // Summer break: Aug 1 – Sep 30
+  const summerStart = new Date(year, 7, 1);  // August is month 7 (0-based)
+  const summerEnd = new Date(year, 8, 30);   // September is month 8
+
   return (
     (date >= winterStart && date <= winterEnd) ||
-    (date >= springStart && date <= springEnd)
+    (date >= springStart && date <= springEnd) ||
+    (date >= summerStart && date <= summerEnd)
+  );
+}
+
+// Add this function to generate the Google Calendar event link
+function openGoogleCalendarEvent(shift) {
+  // Format: YYYYMMDDTHHmmssZ (UTC)
+  const start = `${shift.workDate.replace(/-/g, '')}T${shift.startTime.replace(':', '')}00Z`;
+  const end = `${shift.workDate.replace(/-/g, '')}T${shift.endTime.replace(':', '')}00Z`;
+  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(shift.jobType)}&dates=${start}/${end}&details=${encodeURIComponent('Base Rate: ¥' + shift.baseRate + '\nNet Hours: ' + shift.netHours)}`;
+  window.open(url, '_blank');
+}
+
+// Custom event component for calendar
+function CalendarEvent({ event }) {
+  return (
+    <Tooltip title={
+      `${event.resource.jobType}\n${event.resource.workDate} ${event.resource.startTime}–${event.resource.endTime}\n¥${event.resource.baseRate}/h | ${event.resource.netHours}h`
+    } arrow>
+      <span style={{
+        display: 'block',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        fontSize: '0.85em',
+        maxWidth: '100%',
+      }}>
+        {event.title}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -54,6 +112,17 @@ export default function Dashboard() {
   const [filterJob, setFilterJob] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(dayjs().month()); // 0-based month
   const currentYear = dayjs().year();
+  const [calendarDate, setCalendarDate] = useState(dayjs());
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [newShift, setNewShift] = useState({ jobType: '', start: null, end: null });
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [selectingRange, setSelectingRange] = useState(false);
+  const [rangeStart, setRangeStart] = useState(null);
+  const [rangeMessage, setRangeMessage] = useState('');
+  const [jobs, setJobs] = useState([]);
+  const isDark = theme.palette.mode === 'dark';
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (u) => {
@@ -69,6 +138,17 @@ export default function Dashboard() {
     const unsub = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setSubmissions(data);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // Fetch jobs for the user
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, `users/${user.uid}/jobs`));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setJobs(data);
     });
     return () => unsub();
   }, [user]);
@@ -120,7 +200,31 @@ export default function Dashboard() {
     if (!groupedByWeek[week]) groupedByWeek[week] = { submissions: [], totalHours: 0, weeklyLimit };
     groupedByWeek[week].submissions.push(s);
     groupedByWeek[week].totalHours += s.netHours;
+    groupedByWeek[week].weeklyLimit = weeklyLimit; // always update in case of multiple entries
   });
+
+  // Get all dates with shifts
+  const shiftDates = React.useMemo(() => {
+    return Array.from(new Set(submissions.map(s => s.workDate)));
+  }, [submissions]);
+
+  // Shifts for the selected day
+  const shiftsForDay = React.useMemo(() => {
+    const dateStr = calendarDate.format('YYYY-MM-DD');
+    return submissions.filter(s => s.workDate === dateStr);
+  }, [submissions, calendarDate]);
+
+  // Custom day renderer to highlight days with shifts
+  function renderDay(day, _value, DayComponentProps) {
+    const dateStr = day.format('YYYY-MM-DD');
+    const hasShift = shiftDates.includes(dateStr);
+    return (
+      <PickersDay
+        {...DayComponentProps}
+        sx={hasShift ? { bgcolor: 'primary.light', color: 'primary.contrastText' } : {}}
+      />
+    );
+  }
 
   // Modal handlers
   const openDeleteModal = (id) => {
@@ -142,6 +246,147 @@ export default function Dashboard() {
     }
   };
 
+  // --- Calendar Sync Handlers ---
+  const handleGoogleExport = () => {
+    if (!submissions.length) {
+      alert('No shifts to export!');
+      return;
+    }
+    // For each shift, open a new Google Calendar event tab
+    submissions.forEach(openGoogleCalendarEvent);
+    alert('Opened Google Calendar event(s) in new tab(s). Please review and save each event.');
+  };
+  const handleAppleExport = () => {
+    if (!submissions.length) {
+      alert('No shifts to export!');
+      return;
+    }
+    exportShiftsToICS(submissions);
+  };
+
+  // Handle slot selection for adding a shift
+  const handleSelectSlot = ({ start, end }) => {
+    const isMobile = window.innerWidth < 600;
+    if (isMobile) {
+      // Two-tap system for mobile
+      if (!selectingRange) {
+        setRangeStart(start);
+        setSelectingRange(true);
+        setRangeMessage('Now select end time');
+      } else {
+        const finalEnd = start > rangeStart ? start : rangeStart;
+        const finalStart = start > rangeStart ? rangeStart : start;
+        setNewShift({
+          jobType: '',
+          start: finalStart,
+          end: finalEnd,
+        });
+        setSelectedSlot({ start: finalStart, end: finalEnd });
+        setAddModalOpen(true);
+        setSelectingRange(false);
+        setRangeStart(null);
+        setRangeMessage('');
+      }
+    } else {
+      // Desktop: use drag-to-select or single click
+      setNewShift({
+        jobType: '',
+        start,
+        end,
+      });
+      setSelectedSlot({ start, end });
+      setAddModalOpen(true);
+      setSelectingRange(false);
+      setRangeStart(null);
+      setRangeMessage('');
+    }
+  };
+
+  // Handle input change in modal
+  const handleModalChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'jobType') {
+      const job = jobs.find(j => j.jobName === value);
+      setNewShift({
+        ...newShift,
+        jobType: value,
+        baseRate: job ? Number(job.basePay) : 0,
+        breakCriteria: job ? job.breakCriteria || [] : [],
+        hasWeekendBonus: job ? job.hasWeekendBonus || false : false,
+      });
+    } else {
+      setNewShift({
+        ...newShift,
+        [name]: value,
+      });
+    }
+  };
+
+  // Handle modal submit
+  const handleAddShift = async () => {
+    if (!user || !newShift.jobType || !newShift.start || !newShift.end) return;
+    // Parse date and time
+    const workDate = newShift.start.toISOString().slice(0, 10);
+    const startTime = newShift.start.toTimeString().slice(0, 5);
+    const endTime = newShift.end.toTimeString().slice(0, 5);
+    const startDecimal = convertTimeToDecimal(startTime);
+    const endDecimal = convertTimeToDecimal(endTime);
+    const rawDurationUnrounded = calculateRawDuration(startDecimal, endDecimal);
+    const rawDuration = Math.round(rawDurationUnrounded * 100) / 100;
+    const netHours = calculateNetHours(rawDuration, newShift.breakCriteria);
+    const workDateObj = new Date(workDate);
+    const isWeekend = workDateObj.getDay() === 0 || workDateObj.getDay() === 6;
+    const weekendBonusAmount = isWeekend && newShift.hasWeekendBonus ? netHours * 30 : 0;
+    const totalEarnings = Math.round(netHours * newShift.baseRate + weekendBonusAmount);
+    const weekNumber = computeWeekNumber(workDate);
+    await addDoc(collection(db, `users/${user.uid}/submissions`), {
+      jobType: newShift.jobType,
+      baseRate: newShift.baseRate,
+      workDate,
+      startTime,
+      endTime,
+      startDecimal,
+      endDecimal,
+      rawDuration,
+      breaks: getBreakMinutes(rawDuration, newShift.breakCriteria),
+      netHours,
+      weekendBonus: weekendBonusAmount,
+      totalEarnings,
+      weekNumber,
+      breakCriteria: newShift.breakCriteria,
+      hasWeekendBonus: newShift.hasWeekendBonus,
+      createdAt: new Date(),
+    });
+    setAddModalOpen(false);
+  };
+
+  // When closing the modal, reset selectingRange and rangeStart
+  const handleCloseModal = () => {
+    setAddModalOpen(false);
+    setSelectedSlot(null);
+    setSelectingRange(false);
+    setRangeStart(null);
+    setRangeMessage('');
+  };
+
+  // react-big-calendar setup
+  const locales = { 'en-US': enUS };
+  const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
+  // Convert submissions to calendar events
+  const events = submissions.map(shift => ({
+    id: shift.id,
+    title: shift.jobType, // only job name
+    start: dayjs(`${shift.workDate}T${shift.startTime}`).toDate(),
+    end: dayjs(`${shift.workDate}T${shift.endTime}`).toDate(),
+    allDay: false,
+    resource: shift,
+  }));
+  // Event click handler
+  const handleSelectEvent = (event) => {
+    setSelectedEvent(event.resource); // event.resource is the shift object
+    setEventDialogOpen(true);
+  };
+
   if (!user) return <Typography>Loading Dashboard...</Typography>;
 
   return (
@@ -154,6 +399,154 @@ export default function Dashboard() {
       borderRadius={2}
       boxShadow={3}
     >
+      {isDark && (
+        <style>{`
+          .rbc-toolbar button {
+            color: #fff !important;
+            background: #333 !important;
+            border: 1px solid #444 !important;
+            border-radius: 6px !important;
+            padding: 6px 16px !important;
+            margin: 0 4px !important;
+            font-weight: 500 !important;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+          }
+          .rbc-toolbar button:hover,
+          .rbc-toolbar button:focus {
+            background: #1976d2 !important;
+            color: #fff !important;
+            border-color: #1976d2 !important;
+            box-shadow: 0 4px 16px rgba(25,118,210,0.15);
+          }
+          .rbc-toolbar button.rbc-active {
+            background: #1976d2 !important;
+            color: #fff !important;
+            border-color: #1976d2 !important;
+            font-weight: bold !important;
+            box-shadow: 0 4px 16px rgba(25,118,210,0.18);
+          }
+        `}</style>
+      )}
+      {!isDark && (
+        <style>{`
+          .rbc-toolbar button {
+            color: #1976d2 !important;
+            background: #fff !important;
+            border: 1px solid #90caf9 !important;
+            border-radius: 6px !important;
+            padding: 6px 16px !important;
+            margin: 0 4px !important;
+            font-weight: 500 !important;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 8px rgba(33,150,243,0.08);
+          }
+          .rbc-toolbar button:hover,
+          .rbc-toolbar button:focus {
+            background: #e3f2fd !important;
+            color: #1976d2 !important;
+            border-color: #1976d2 !important;
+            box-shadow: 0 4px 16px rgba(33,150,243,0.13);
+          }
+          .rbc-toolbar button.rbc-active {
+            background: #1976d2 !important;
+            color: #fff !important;
+            border-color: #1976d2 !important;
+            font-weight: bold !important;
+            box-shadow: 0 4px 16px rgba(25,118,210,0.18);
+          }
+        `}</style>
+      )}
+      {/* Shift Calendar */}
+      <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
+        <Typography variant="h6" mb={1}>🗓️ Your Shift Calendar</Typography>
+        <div
+          style={{
+            height: 'auto',
+            background: isDark ? '#222' : 'white',
+            borderRadius: 8,
+            marginBottom: 16,
+            width: '100%',
+            maxWidth: '100%',
+            overflow: 'hidden',
+          }}
+        >
+          <Calendar
+            localizer={localizer}
+            events={events}
+            startAccessor="start"
+            endAccessor="end"
+            style={{ height: 480, borderRadius: 8 }}
+            onSelectEvent={handleSelectEvent}
+            popup
+            selectable
+            onSelectSlot={handleSelectSlot}
+            views={['month', 'week', 'day']}
+            defaultView="month"
+            toolbar
+            dayPropGetter={() => ({ style: { background: isDark ? '#222' : 'white', color: isDark ? '#fff' : '#000' } })}
+            eventPropGetter={() => ({ style: { background: isDark ? '#1976d2' : '#90caf9', color: isDark ? '#fff' : '#000', borderRadius: 6, border: 0 } })}
+            components={{ event: CalendarEvent }}
+          />
+        </div>
+        {/* Add Shift Modal */}
+        <Dialog open={addModalOpen} onClose={handleCloseModal} fullWidth maxWidth="xs">
+          <DialogTitle>Add Shift</DialogTitle>
+          <DialogContent>
+            {selectedSlot && (
+              <Typography variant="subtitle2" mb={1}>
+                {`${selectedSlot.start.toLocaleDateString()} ${selectedSlot.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${selectedSlot.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+              </Typography>
+            )}
+            <TextField
+              select
+              margin="dense"
+              label="Job Type"
+              name="jobType"
+              fullWidth
+              value={newShift.jobType}
+              onChange={handleModalChange}
+              SelectProps={{ native: false }}
+            >
+              {jobs.length === 0 ? (
+                <MenuItem value="" disabled>No jobs found</MenuItem>
+              ) : (
+                jobs.map(job => (
+                  <MenuItem key={job.id} value={job.jobName}>{job.jobName}</MenuItem>
+                ))
+              )}
+            </TextField>
+            <TextField
+              margin="dense"
+              label="Start Time"
+              type="time"
+              name="startTime"
+              fullWidth
+              value={newShift.start ? newShift.start.toTimeString().slice(0,5) : ''}
+              onChange={e => setNewShift({ ...newShift, start: new Date(newShift.start.setHours(...e.target.value.split(':').map(Number))) })}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              margin="dense"
+              label="End Time"
+              type="time"
+              name="endTime"
+              fullWidth
+              value={newShift.end ? newShift.end.toTimeString().slice(0,5) : ''}
+              onChange={e => setNewShift({ ...newShift, end: new Date(newShift.end.setHours(...e.target.value.split(':').map(Number))) })}
+              InputLabelProps={{ shrink: true }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseModal}>Cancel</Button>
+            <Button onClick={handleAddShift} variant="contained">Add</Button>
+          </DialogActions>
+        </Dialog>
+        {selectingRange && (
+          <Typography variant="caption" color="primary" sx={{ mb: 1, display: 'block', textAlign: 'center' }}>{rangeMessage}</Typography>
+        )}
+      </Paper>
+
       <Typography variant="h5" mb={2}>
         📊 Dashboard Overview
       </Typography>
@@ -375,6 +768,34 @@ export default function Dashboard() {
           </Box>
         </Box>
       )}
+
+      {/* Event Dialog */}
+      <Dialog open={eventDialogOpen} onClose={() => setEventDialogOpen(false)}>
+        <DialogTitle>Shift Details</DialogTitle>
+        <DialogContent>
+          {selectedEvent && (
+            <>
+              <Typography><b>Job:</b> {selectedEvent.jobType}</Typography>
+              <Typography><b>Date:</b> {selectedEvent.workDate}</Typography>
+              <Typography><b>Time:</b> {selectedEvent.startTime} - {selectedEvent.endTime}</Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEventDialogOpen(false)}>Close</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={async () => {
+              if (!selectedEvent) return;
+              await deleteDoc(doc(db, `users/${user.uid}/submissions`, selectedEvent.id));
+              setEventDialogOpen(false);
+            }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -9,6 +9,7 @@ import Dashboard from "./components/Dashboard";
 import Form from "./components/Form";
 import Results from "./components/Results";
 import Auth from "./components/Auth";
+import AddToCalendar from "./components/AddToCalendar";
 
 import { ThemeProvider as MuiThemeProvider, createTheme, CssBaseline, CircularProgress, Box } from "@mui/material";
 import { ThemeContext, ThemeProvider } from "./ThemeContext";
@@ -60,6 +61,7 @@ function AppContent() {
               <Route path="/managejobs" element={<ManageJobs />} />
               <Route path="/form" element={<Form />} />
               <Route path="/results/:id" element={<Results />} />
+              <Route path="/add-to-calendar" element={<AddToCalendar />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </>

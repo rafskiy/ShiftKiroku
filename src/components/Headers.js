@@ -23,6 +23,7 @@ export default function Headers() {
     { label: "Dashboard", path: "/dashboard" },
     { label: "Manage Jobs", path: "/managejobs" },
     { label: "Form", path: "/form" },
+    { label: "Add to Calendar", path: "/add-to-calendar" },
     { label: "Logout", path: "/" },
   ];
 
