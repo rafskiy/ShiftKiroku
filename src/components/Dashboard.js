@@ -83,9 +83,13 @@ function openGoogleCalendarEvent(shift) {
 
 // Custom event component for calendar
 function CalendarEvent({ event }) {
+  // Ensure event.title is always defined
+  const title = event && event.title ? event.title : '';
   return (
     <Tooltip title={
-      `${event.resource.jobType}\n${event.resource.workDate} ${event.resource.startTime}–${event.resource.endTime}\n¥${event.resource.baseRate}/h | ${event.resource.netHours}h`
+      event && event.resource ?
+        `${event.resource.jobType}\n${event.resource.workDate} ${event.resource.startTime}–${event.resource.endTime}\n¥${event.resource.baseRate}/h | ${event.resource.netHours}h`
+        : ''
     } arrow>
       <span style={{
         display: 'block',
@@ -94,10 +98,41 @@ function CalendarEvent({ event }) {
         textOverflow: 'ellipsis',
         fontSize: '0.85em',
         maxWidth: '100%',
-      }}>
-        {event.title}
-      </span>
+      }}>{title}</span>
     </Tooltip>
+  );
+}
+
+// Custom Toolbar for react-big-calendar
+function ViewToolbar({ label, onView, currentView }) {
+  return (
+    <Box display="flex" flexWrap="wrap" justifyContent="center" alignItems="center" gap={2} mt={2} mb={2}>
+      <Button
+        variant={currentView === 'month' ? 'contained' : 'outlined'}
+        onClick={() => onView('month')}
+        sx={{ minWidth: 80 }}
+      >
+        Month
+      </Button>
+      <Button
+        variant={currentView === 'week' ? 'contained' : 'outlined'}
+        onClick={() => onView('week')}
+        sx={{ minWidth: 80 }}
+      >
+        Week
+      </Button>
+      <Typography variant="subtitle1" sx={{ ml: 2 }}>{label}</Typography>
+    </Box>
+  );
+}
+
+function NavToolbar({ onNavigate }) {
+  return (
+    <Box display="flex" justifyContent="center" alignItems="center" gap={2} mt={2} mb={2}>
+      <Button variant="outlined" onClick={() => onNavigate('PREV')}>Back</Button>
+      <Button variant="outlined" onClick={() => onNavigate('TODAY')}>Today</Button>
+      <Button variant="outlined" onClick={() => onNavigate('NEXT')}>Next</Button>
+    </Box>
   );
 }
 
@@ -123,6 +158,8 @@ export default function Dashboard() {
   const isDark = theme.palette.mode === 'dark';
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [calendarDateState, setCalendarDateState] = useState(new Date());
+  const [calendarView, setCalendarView] = useState('month');
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (u) => {
@@ -265,7 +302,7 @@ export default function Dashboard() {
   };
 
   // Handle slot selection for adding a shift
-  const handleSelectSlot = ({ start, end }) => {
+  const handleSelectSlot = ({ start, end, action }) => {
     const isMobile = window.innerWidth < 600;
     if (isMobile) {
       // Two-tap system for mobile
@@ -387,6 +424,32 @@ export default function Dashboard() {
     setEventDialogOpen(true);
   };
 
+  const handleCalendarNavigate = (date) => {
+    setCalendarDateState(date);
+  };
+  const handleCalendarView = (view) => {
+    setCalendarView(view);
+  };
+
+  const handleToolbarNavigate = (action) => {
+    let newDate = new Date(calendarDateState);
+    if (action === 'TODAY') {
+      newDate = new Date();
+    } else if (action === 'NEXT') {
+      if (calendarView === 'month') newDate.setMonth(newDate.getMonth() + 1);
+      else if (calendarView === 'week') newDate.setDate(newDate.getDate() + 7);
+      else if (calendarView === 'day') newDate.setDate(newDate.getDate() + 1);
+    } else if (action === 'PREV') {
+      if (calendarView === 'month') newDate.setMonth(newDate.getMonth() - 1);
+      else if (calendarView === 'week') newDate.setDate(newDate.getDate() - 7);
+      else if (calendarView === 'day') newDate.setDate(newDate.getDate() - 1);
+    }
+    setCalendarDateState(newDate);
+  };
+
+  // Responsive calendar height based on screen width
+  const calendarHeight = window.innerWidth < 600 ? 350 : 480;
+
   if (!user) return <Typography>Loading Dashboard...</Typography>;
 
   return (
@@ -426,6 +489,22 @@ export default function Dashboard() {
             font-weight: bold !important;
             box-shadow: 0 4px 16px rgba(25,118,210,0.18);
           }
+          @media (max-width: 600px) {
+            .rbc-toolbar {
+              flex-direction: column;
+              gap: 8px;
+            }
+            .rbc-event {
+              font-size: 0.95em !important;
+              padding: 8px 4px !important;
+              min-height: 40px !important;
+              border-radius: 8px !important;
+            }
+            .rbc-agenda-view, .rbc-time-view {
+              /* Hide agenda/time view if present */
+              /* display: none !important; */
+            }
+          }
         `}</style>
       )}
       {!isDark && (
@@ -455,20 +534,45 @@ export default function Dashboard() {
             font-weight: bold !important;
             box-shadow: 0 4px 16px rgba(25,118,210,0.18);
           }
+          @media (max-width: 600px) {
+            .rbc-toolbar {
+              flex-direction: column;
+              gap: 8px;
+            }
+            .rbc-event {
+              font-size: 0.95em !important;
+              padding: 8px 4px !important;
+              min-height: 40px !important;
+              border-radius: 8px !important;
+            }
+            .rbc-agenda-view, .rbc-time-view {
+              /* Hide agenda/time view if present */
+              /* display: none !important; */
+            }
+          }
         `}</style>
       )}
       {/* Shift Calendar */}
       <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
         <Typography variant="h6" mb={1}>🗓️ Your Shift Calendar</Typography>
+        <ViewToolbar
+          label={calendarDateState.toLocaleDateString(undefined, 
+    calendarView === 'month'
+      ? { year: 'numeric', month: 'long' }
+      : { year: 'numeric', month: 'long', day: 'numeric' }
+  )}
+  onView={handleCalendarView}
+  currentView={calendarView}
+/>
         <div
           style={{
-            height: 'auto',
+            height: calendarHeight,
             background: isDark ? '#222' : 'white',
             borderRadius: 8,
             marginBottom: 16,
             width: '100%',
             maxWidth: '100%',
-            overflow: 'hidden',
+            overflow: 'auto', // allow horizontal scroll on mobile
           }}
         >
           <Calendar
@@ -476,19 +580,23 @@ export default function Dashboard() {
             events={events}
             startAccessor="start"
             endAccessor="end"
-            style={{ height: 480, borderRadius: 8 }}
+            style={{ height: calendarHeight, borderRadius: 8, minWidth: 320 }}
             onSelectEvent={handleSelectEvent}
             popup
             selectable
             onSelectSlot={handleSelectSlot}
             views={['month', 'week', 'day']}
-            defaultView="month"
-            toolbar
+            view={calendarView}
+            onView={handleCalendarView}
+            date={calendarDateState}
+            onNavigate={handleCalendarNavigate}
+            toolbar={false}
             dayPropGetter={() => ({ style: { background: isDark ? '#222' : 'white', color: isDark ? '#fff' : '#000' } })}
             eventPropGetter={() => ({ style: { background: isDark ? '#1976d2' : '#90caf9', color: isDark ? '#fff' : '#000', borderRadius: 6, border: 0 } })}
             components={{ event: CalendarEvent }}
           />
         </div>
+        <NavToolbar onNavigate={handleToolbarNavigate} />
         {/* Add Shift Modal */}
         <Dialog open={addModalOpen} onClose={handleCloseModal} fullWidth maxWidth="xs">
           <DialogTitle>Add Shift</DialogTitle>
