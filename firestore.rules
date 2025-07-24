@@ -11,6 +11,11 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Allow anyone to add feedback, but not read
+    match /feedback/{feedbackId} {
+      allow create: if true;
+      allow read: if false;
+    }
     // You can add other rules here as needed
   }
 }

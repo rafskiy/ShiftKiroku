@@ -160,6 +160,9 @@ export default function Dashboard() {
   const [eventDialogOpen, setEventDialogOpen] = useState(false);
   const [calendarDateState, setCalendarDateState] = useState(new Date());
   const [calendarView, setCalendarView] = useState('month');
+  // Add state for selected bar
+  const [selectedWeekBar, setSelectedWeekBar] = useState(null); // for monthly tab
+  const [selectedMonthBar, setSelectedMonthBar] = useState(null); // for yearly tab
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (u) => {
@@ -709,9 +712,34 @@ export default function Dashboard() {
                 <XAxis dataKey="week" />
                 <YAxis tickFormatter={(v) => `¥${v.toLocaleString()}`} />
                 <Tooltip formatter={(v) => `¥${v.toLocaleString()}`} />
-                <Bar dataKey="total" fill="#4caf50" radius={[6, 6, 0, 0]} />
+                <Bar
+                  dataKey="total"
+                  fill="#4caf50"
+                  radius={[6, 6, 0, 0]}
+                  onClick={(_, index) => setSelectedWeekBar(weeklyDataForMonth[index])}
+                />
               </BarChart>
             </ResponsiveContainer>
+          )}
+          {/* Show total hours and salary for selected week bar */}
+          {selectedWeekBar && (
+            <Box mt={2} p={2} bgcolor={theme.palette.background.paper} borderRadius={2} boxShadow={1}>
+              <Typography variant="subtitle1">
+                <b>Week #{selectedWeekBar.week}</b>
+              </Typography>
+              <Typography>Total Salary: <b>¥{selectedWeekBar.total.toLocaleString()}</b></Typography>
+              {/* Calculate total hours for this week */}
+              <Typography>
+                Total Hours: <b>{
+                  (() => {
+                    // Find the week in groupedByWeek
+                    const weekData = groupedByWeek[selectedWeekBar.week];
+                    return weekData ? weekData.totalHours.toFixed(2) : 'N/A';
+                  })()
+                } hrs</b>
+              </Typography>
+              <Button size="small" sx={{ mt: 1 }} onClick={() => setSelectedWeekBar(null)}>Clear</Button>
+            </Box>
           )}
         </TabPanel>
 
@@ -728,9 +756,38 @@ export default function Dashboard() {
                 <XAxis dataKey="month" />
                 <YAxis tickFormatter={(v) => `¥${v.toLocaleString()}`} />
                 <Tooltip formatter={(v) => `¥${v.toLocaleString()}`} />
-                <Bar dataKey="total" fill="#2196f3" radius={[6, 6, 0, 0]} />
+                <Bar
+                  dataKey="total"
+                  fill="#2196f3"
+                  radius={[6, 6, 0, 0]}
+                  onClick={(_, index) => setSelectedMonthBar(monthlyDataForYear[index])}
+                />
               </BarChart>
             </ResponsiveContainer>
+          )}
+          {/* Show total hours and salary for selected month bar */}
+          {selectedMonthBar && (
+            <Box mt={2} p={2} bgcolor={theme.palette.background.paper} borderRadius={2} boxShadow={1}>
+              <Typography variant="subtitle1">
+                <b>Month: {selectedMonthBar.month}</b>
+              </Typography>
+              <Typography>Total Salary: <b>¥{selectedMonthBar.total.toLocaleString()}</b></Typography>
+              {/* Calculate total hours for this month */}
+              <Typography>
+                Total Hours: <b>{
+                  (() => {
+                    // Sum all netHours for this month
+                    const monthSubs = filteredSubs.filter(s => {
+                      const date = new Date(s.workDate);
+                      return (date.getFullYear() === currentYear && (date.getMonth() + 1) === Number(selectedMonthBar.month));
+                    });
+                    const total = monthSubs.reduce((acc, s) => acc + s.netHours, 0);
+                    return total.toFixed(2);
+                  })()
+                } hrs</b>
+              </Typography>
+              <Button size="small" sx={{ mt: 1 }} onClick={() => setSelectedMonthBar(null)}>Clear</Button>
+            </Box>
           )}
         </TabPanel>
       </TabContext>

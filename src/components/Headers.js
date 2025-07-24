@@ -2,7 +2,7 @@ import React, { useState, useContext } from "react";
 import { ThemeContext } from "../ThemeContext";
 import {
   AppBar, Toolbar, Typography, IconButton, Drawer, List, ListItem,
-  ListItemButton, ListItemText, Box, Button, useTheme, useMediaQuery
+  ListItemButton, ListItemText, Box, Button, useTheme, useMediaQuery, Link as RouterLink
 } from "@mui/material";
 import { auth } from "../firebase";
 
@@ -24,6 +24,7 @@ export default function Headers() {
     { label: "Manage Jobs", path: "/managejobs" },
     { label: "Form", path: "/form" },
     { label: "Add to Calendar", path: "/add-to-calendar" },
+    { label: "Feedback", path: "/feedback" },
     { label: "Logout", path: "/" },
   ];
 
