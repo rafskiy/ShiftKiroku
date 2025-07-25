@@ -2,8 +2,6 @@ import { loadGapiInsideDOM } from 'gapi-script';
 import { saveAs } from 'file-saver';
 import { createEvents } from 'ics';
 
-// utils.js
-// --- Google Calendar & Apple Calendar (ICS) Sync Utilities ---
 export function convertTimeToDecimal(timeStr) {
   
   if (!timeStr) return 0;
@@ -47,7 +45,6 @@ export function computeWeekNumber(dateInput) {
   return Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
 }
 
-// --- Google Calendar & Apple Calendar (ICS) Sync Utilities ---
 const GOOGLE_CLIENT_ID = '540225493834-2g6evhet2932tlq2b2a2t0lrc5a4gcr1.apps.googleusercontent.com';
 const GOOGLE_API_KEY = 'AIzaSyDYIW0ZDpwgVD3gWXhpUpWLet4zr93DESk';
 const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/calendar';

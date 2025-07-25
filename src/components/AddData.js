@@ -1,4 +1,3 @@
-// src/components/AddData.js
 import React, { useState } from 'react';
 import { db } from '../firebase'; // Import the Firestore instance
 import { collection, addDoc } from 'firebase/firestore';

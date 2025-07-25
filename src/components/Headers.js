@@ -5,11 +5,9 @@ import {
   ListItemButton, ListItemText, Box, Button, useTheme, useMediaQuery, Link as RouterLink
 } from "@mui/material";
 import { auth } from "../firebase";
-
 import MenuIcon from "@mui/icons-material/Menu";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
-
 import { useNavigate } from "react-router-dom";
 
 export default function Headers() {
@@ -37,7 +35,7 @@ export default function Headers() {
     if (path === "/") {
       try {
         await auth.signOut();
-        navigate("/");  // Redirect after logout
+        navigate("/");
       } catch (error) {
         console.error("Logout failed:", error);
         alert("Failed to log out. Please try again.");
@@ -63,7 +61,6 @@ export default function Headers() {
           </ListItem>
         ))}
       </List>
-
       <Box
         sx={{
           px: 2,
@@ -79,7 +76,7 @@ export default function Headers() {
         <Typography variant="body1">Dark Mode</Typography>
         <IconButton
           onClick={(e) => {
-            e.stopPropagation(); // prevent drawer closing when clicking toggle
+            e.stopPropagation();
             toggleDarkMode();
           }}
           color="inherit"
@@ -103,7 +100,6 @@ export default function Headers() {
           >
             ShiftKiroku シフト記録
           </Typography>
-
           {isMobile ? (
             <>
               <IconButton

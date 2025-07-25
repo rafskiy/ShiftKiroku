@@ -1,12 +1,8 @@
-// src/firebase.js
-
-// Import Firebase functions you need
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 
-// Your Firebase config object
 const firebaseConfig = {
   apiKey: "AIzaSyDYIW0ZDpwgVD3gWXhpUpWLet4zr93DESk",
   authDomain: "work-hour-tracker-56ae1.firebaseapp.com",
@@ -17,12 +13,10 @@ const firebaseConfig = {
   measurementId: "G-34W6ND5WCM"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Export everything you need
 export { app, analytics, db, auth };
 
